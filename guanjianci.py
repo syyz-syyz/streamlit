@@ -43,6 +43,11 @@ def read_b_file(b_file):
 
 @st.cache_data
 def process_data(a_df, b_df):
+    # 初始化“提取空值和单值中”进度条
+    extraction_progress = st.progress(0)
+    extraction_text = st.empty()
+    extraction_text.text("提取空值和单值中")
+
     # 统计不同长度的数量
     length_zero_count = 0
     length_one_count = 0
@@ -52,6 +57,9 @@ def process_data(a_df, b_df):
     length_zero_rows = []
     length_one_rows = []
     other_length_rows = []
+
+    total_rows = len(b_df)
+    step = max(1, total_rows // 20)  # 每 5% 更新一次进度条
 
     # 从末尾开始遍历
     for index in range(len(b_df) - 1, -1, -1):
@@ -69,6 +77,16 @@ def process_data(a_df, b_df):
             other_length_count = index + 1
             other_length_rows = b_df.iloc[:index + 1].to_dict(orient='records')
             break
+
+        if index % step == 0:
+            progress = 1 - (index / total_rows)
+            extraction_progress.progress(progress)
+
+    # 完成“提取空值和单值中”进度条
+    extraction_progress.progress(1.0)
+    time.sleep(0.5)  # 稍微延迟一下，让用户看到进度条满
+    extraction_progress.empty()
+    extraction_text.empty()
 
     # 将列表转换为 DataFrame
     length_zero_df = pd.DataFrame(length_zero_rows)
@@ -102,9 +120,10 @@ def process_data(a_df, b_df):
     result_data = []
 
     # 初始化进度条和文字信息
-    progress_bar = st.progress(0)
-    progress_text = st.empty()  # 用于动态更新文字信息
-    total_rows = len(a_df)
+    matching_progress = st.progress(0)
+    matching_text = st.empty()  # 用于动态更新文字信息
+    total_rows_a = len(a_df)
+    step_a = max(1, total_rows_a // 20)  # 每 5% 更新一次进度条
 
     # 记录开始时间
     start_time = time.time()
@@ -134,21 +153,37 @@ def process_data(a_df, b_df):
                 '标签': latest_label
             })
 
-        # 计算已用时间和剩余时间
-        elapsed_time = time.time() - start_time
-        progress = (index + 1) / total_rows
-        remaining_time = (elapsed_time / (index + 1)) * (total_rows - (index + 1))
+        if index % step_a == 0:
+            progress = (index + 1) / total_rows_a
+            elapsed_time = time.time() - start_time
+            remaining_time = (elapsed_time / (index + 1)) * (total_rows_a - (index + 1))
+            matching_progress.progress(progress)
+            matching_text.text(f"匹配数据中: {index + 1}/{total_rows_a} | 已用时间: {elapsed_time:.2f}秒 | 剩余时间: {remaining_time:.2f}秒")
 
-        # 更新进度条和文字信息
-        progress_bar.progress(progress)
-        progress_text.text(f"处理进度: {index + 1}/{total_rows} | 已用时间: {elapsed_time:.2f}秒 | 剩余时间: {remaining_time:.2f}秒")
+    # 完成匹配进度条
+    matching_progress.progress(1.0)
+    time.sleep(0.5)
+    matching_progress.empty()
+    matching_text.empty()
 
     # 将结果转换为 DataFrame
     result_df = pd.DataFrame(result_data, columns=['源数据', '字典', '标签'])
 
-    # 清空进度条和进度文字
-    progress_bar.empty()
-    progress_text.empty()
+    # 初始化“Excel 生成中”进度条
+    excel_progress = st.progress(0)
+    excel_text = st.empty()
+    excel_text.text("Excel 生成中")
+
+    # 模拟 Excel 生成进度
+    for i in range(20):
+        time.sleep(0.1)
+        excel_progress.progress((i + 1) / 20)
+
+    # 完成“Excel 生成中”进度条
+    excel_progress.progress(1.0)
+    time.sleep(0.5)
+    excel_progress.empty()
+    excel_text.empty()
 
     return result_df
 
