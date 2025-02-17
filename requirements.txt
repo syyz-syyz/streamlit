@@ -1,6 +1,2 @@
 streamlit
 pandas
-openpyxl
-xlsxwriter
-io
-time
