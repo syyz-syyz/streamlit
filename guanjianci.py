@@ -21,7 +21,7 @@ st.markdown("""
 </style>
 ### 操作指南
 1. **读取 A 文件**：请上传一个 XLSX 文件，程序将读取该文件第一个工作表的第一列作为源数据。
-2. **读取 B 文件**：请上传另一个 XLSX 文件，程序将读取该文件第一个工作表的前两列，分别作为字典和标签。
+2. **读取 B 文件**：请上传另一个 XLSX 文件，程序将读取该文件第一个工作表的第一列作为字典，后面的列作为标签。
 3. **功能实现**：通过 B 文件中的字典数据，提取 A 文件源数据中的关键词，并将匹配结果整理成新的 Excel 文件供你下载。
 4. **备注**：文档切词之前会根据单个的字典长度进行内部排列，确保洗数逻辑是从大到小，从右往左的形式。
 """, unsafe_allow_html=True)
@@ -37,12 +37,31 @@ def read_a_file(a_file):
 
 @st.cache_data
 def read_b_file(b_file):
-    b_df = pd.read_excel(b_file, sheet_name=0, usecols=[0, 1], header=None)
-    b_df.columns = ['字典', '标签']
+    # 读取 B 文件，不指定列，让 pandas 自动识别
+    b_df = pd.read_excel(b_file, sheet_name=0, header=None)
+    # 获取列数
+    num_columns = b_df.shape[1]
+    # 重命名第一列为字典
+    b_df.rename(columns={0: '字典'}, inplace=True)
+    # 重命名后面的列为标签1, 标签2, ...
+    for i in range(1, num_columns):
+        b_df.rename(columns={i: f'标签{i}'}, inplace=True)
     # 将数字转换为字符串
     b_df['字典'] = b_df['字典'].astype(str)
     # 按字典长度排序，优先匹配较长的字典
     b_df = b_df.sort_values(by='字典', key=lambda x: x.str.len(), ascending=False)
+
+    # 找出所有重复行
+    duplicate_mask = b_df['字典'].duplicated(keep=False)
+    duplicate_rows = b_df[duplicate_mask]
+
+    if not duplicate_rows.empty:
+        st.warning("发现字典中有重复元素，以下是重复的行：")
+        st.dataframe(duplicate_rows)
+        st.info("将选用重复行中上面出现的第一条数据进行后续处理。")
+        # 只保留首次出现的行
+        b_df = b_df[~b_df['字典'].duplicated(keep='first')]
+
     return b_df
 
 @st.cache_data
@@ -99,8 +118,8 @@ def process_data(a_df, b_df):
     # 新增小标题
     st.subheader("输出结果导出")
 
-    # 将 B 文件数据存储为字典
-    b_dict = {row['字典']: row['标签'] for _, row in b_df.iterrows()}
+    # 将 B 文件数据存储为字典，值为包含所有标签的 Series
+    b_dict = {row['字典']: row.drop('字典') for _, row in b_df.iterrows()}
 
     # 创建一个空的 DataFrame 来存储结果
     result_data = []
@@ -118,8 +137,8 @@ def process_data(a_df, b_df):
         matched = False
         max_length = 0
         latest_match = None
-        latest_label = None
-        for dict_word, label in b_dict.items():
+        latest_labels = None
+        for dict_word, labels in b_dict.items():
             word_length = len(dict_word)
             if word_length < max_length:
                 # 如果当前字典词长度小于等于已找到的最大匹配长度，跳出内层循环
@@ -128,15 +147,16 @@ def process_data(a_df, b_df):
             if last_index != -1:
                 max_length = word_length
                 latest_match = dict_word
-                latest_label = label
+                latest_labels = labels
                 matched = True
 
         if matched:
-            result_data.append({
+            result_row = {
                 '源数据': source_data,
-                '字典': latest_match,
-                '标签': latest_label
-            })
+                '字典': latest_match
+            }
+            result_row.update(latest_labels)
+            result_data.append(result_row)
 
         # 计算已用时间和剩余时间
         elapsed_time = time.time() - start_time
@@ -148,7 +168,7 @@ def process_data(a_df, b_df):
         progress_text.text(f"处理进度: {index + 1}/{total_rows} | 已用时间: {elapsed_time:.2f}秒 | 剩余时间: {remaining_time:.2f}秒")
 
     # 将结果转换为 DataFrame
-    result_df = pd.DataFrame(result_data, columns=['源数据', '字典', '标签'])
+    result_df = pd.DataFrame(result_data)
 
     # 清空进度条和进度文字
     progress_bar.empty()
@@ -189,4 +209,4 @@ if a_file and b_file:
     )
 
     # 显示处理结果的简单统计信息
-    st.info(f"共处理了 {len(a_df)} 条源数据，匹配到 {len(result_df[result_df['标签'].notna()])} 条结果。")
+    st.info(f"共处理了 {len(a_df)} 条源数据，匹配到 {len(result_df[result_df[result_df.columns[2:]].notna().any(axis=1)])} 条结果。")
