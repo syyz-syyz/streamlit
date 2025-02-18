@@ -138,16 +138,20 @@ def process_data(a_df, b_df):
         max_length = 0
         latest_match = None
         latest_labels = None
+        max_start_index = -1
         for dict_word, labels in b_dict.items():
             word_length = len(dict_word)
             if word_length < max_length:
                 # 如果当前字典词长度小于等于已找到的最大匹配长度，跳出内层循环
                 break
-            last_index = source_data.rfind(dict_word)
-            if last_index != -1:
-                max_length = word_length
-                latest_match = dict_word
-                latest_labels = labels
+            # 从右到左查找关键词
+            start_index = source_data.rfind(dict_word)
+            if start_index != -1:
+                if start_index > max_start_index:
+                    max_length = word_length
+                    latest_match = dict_word
+                    latest_labels = labels
+                    max_start_index = start_index
                 matched = True
 
         if matched:
