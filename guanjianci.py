@@ -29,7 +29,7 @@ st.markdown("""
 # 定义缓存函数
 @st.cache_data
 def read_a_file(a_file):
-    a_df = pd.read_excel(a_file, sheet_name=0, usecols=[0], header=None, encoding='utf-8')
+    a_df = pd.read_excel(a_file, sheet_name=0, usecols=[0], header=None)
     a_df.columns = ['源数据']
     # 将数字转换为字符串
     a_df['源数据'] = a_df['源数据'].astype(str)
@@ -38,7 +38,7 @@ def read_a_file(a_file):
 @st.cache_data
 def read_b_file(b_file):
     # 读取 B 文件，不指定列，让 pandas 自动识别
-    b_df = pd.read_excel(b_file, sheet_name=0, header=None, encoding='utf-8')
+    b_df = pd.read_excel(b_file, sheet_name=0, header=None)
     # 获取列数
     num_columns = b_df.shape[1]
     # 重命名第一列为字典
