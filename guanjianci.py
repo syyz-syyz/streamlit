@@ -174,6 +174,23 @@ def process_data(a_df, b_df):
     # 将结果转换为 DataFrame
     result_df = pd.DataFrame(result_data)
 
+    # 新增功能：根据 B 文件第六列数字切分源数据并对比
+    if '标签5' in b_df.columns:
+        b_cut_dict = {row['字典']: row['标签5'] for _, row in b_df.iterrows()}
+        result_df['是否词尾'] = ''
+        for index, row in result_df.iterrows():
+            source_data = row['源数据']
+            dict_word = row['字典']
+            cut_num = b_cut_dict.get(dict_word)
+            if pd.notna(cut_num):
+                cut_num = int(cut_num)
+                if len(source_data) >= cut_num:
+                    right_part = source_data[-cut_num:]
+                    if right_part == dict_word:
+                        result_df.at[index, '是否词尾'] = 'Y'
+                    else:
+                        result_df.at[index, '是否词尾'] = 'N'
+
     # 清空进度条和进度文字
     progress_bar.empty()
     progress_text.empty()
