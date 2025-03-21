@@ -7,7 +7,7 @@ import time
 st.set_page_config(page_title="轻量化切词小工具", layout="centered")
 
 # 主标题，设置为深蓝色
-st.markdown("<h1 style='color: #00008B;'>文件处理与 Excel 生成</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='color: #00008B;'>轻量化切词小工具</h1>", unsafe_allow_html=True)
 
 # 副标题，设置为浅蓝色
 st.markdown("<h2 style='color: #ADD8E6;'>精准匹配数据，快速生成结果</h2>", unsafe_allow_html=True)
