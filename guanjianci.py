@@ -7,8 +7,6 @@ import re
 # 设置页面标题和布局
 st.set_page_config(page_title="轻量化切词小工具", layout="centered")
 
-# 增加服务器上传文件大小限制（需在命令行中配合使用--server.maxUploadSize）
-st.set_option('server.maxUploadSize', 1024)  # 设置为1GB
 
 # 主标题，设置为深蓝色
 st.markdown("<h1 style='color: #00008B;'>轻量化切词小工具</h1>", unsafe_allow_html=True)
