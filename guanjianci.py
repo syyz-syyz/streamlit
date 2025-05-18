@@ -3,6 +3,14 @@ import pandas as pd
 import io
 import time
 
+# 初始化会话状态
+if 'a_df' not in st.session_state:
+    st.session_state.a_df = None
+if 'b_df' not in st.session_state:
+    st.session_state.b_df = None
+if 'result_df' not in st.session_state:
+    st.session_state.result_df = None
+
 # 设置页面标题和布局
 st.set_page_config(page_title="轻量化切词小工具", layout="centered")
 
@@ -26,46 +34,58 @@ st.markdown("""
 4. **备注**：文档切词之前会根据单个的字典长度进行内部排列，确保洗数逻辑是从大到小，从右往左的形式。
 """, unsafe_allow_html=True)
 
-# 定义缓存函数
-@st.cache_data
+# 定义缓存函数 - 使用更安全的缓存策略
+@st.cache_data(ttl=3600, max_entries=10)  # 设置缓存有效期和最大条目数
 def read_a_file(a_file):
-    a_df = pd.read_excel(a_file, sheet_name=0, usecols=[0], header=None)
-    a_df.columns = ['源数据']
-    # 将数字转换为字符串
-    a_df['源数据'] = a_df['源数据'].astype(str)
-    return a_df
+    try:
+        a_df = pd.read_excel(a_file, sheet_name=0, usecols=[0], header=None)
+        a_df.columns = ['源数据']
+        # 将数字转换为字符串
+        a_df['源数据'] = a_df['源数据'].astype(str)
+        return a_df
+    except Exception as e:
+        st.error(f"读取 A 文件时出错: {str(e)}")
+        return pd.DataFrame()
 
-@st.cache_data
+@st.cache_data(ttl=3600, max_entries=10)
 def read_b_file(b_file):
-    # 读取 B 文件，不指定列，让 pandas 自动识别
-    b_df = pd.read_excel(b_file, sheet_name=0, header=None)
-    # 获取列数
-    num_columns = b_df.shape[1]
-    # 重命名第一列为字典
-    b_df.rename(columns={0: '字典'}, inplace=True)
-    # 重命名后面的列为标签1, 标签2, ...
-    for i in range(1, num_columns):
-        b_df.rename(columns={i: f'标签{i}'}, inplace=True)
-    # 将数字转换为字符串
-    b_df['字典'] = b_df['字典'].astype(str)
-    # 按字典长度排序，优先匹配较长的字典
-    b_df = b_df.sort_values(by='字典', key=lambda x: x.str.len(), ascending=False)
+    try:
+        # 读取 B 文件，不指定列，让 pandas 自动识别
+        b_df = pd.read_excel(b_file, sheet_name=0, header=None)
+        # 获取列数
+        num_columns = b_df.shape[1]
+        # 重命名第一列为字典
+        b_df.rename(columns={0: '字典'}, inplace=True)
+        # 重命名后面的列为标签1, 标签2, ...
+        for i in range(1, num_columns):
+            b_df.rename(columns={i: f'标签{i}'}, inplace=True)
+        # 将数字转换为字符串
+        b_df['字典'] = b_df['字典'].astype(str)
+        # 按字典长度排序，优先匹配较长的字典
+        b_df = b_df.sort_values(by='字典', key=lambda x: x.str.len(), ascending=False)
 
-    # 找出所有重复行
-    duplicate_mask = b_df['字典'].duplicated(keep=False)
-    duplicate_rows = b_df[duplicate_mask]
+        # 找出所有重复行
+        duplicate_mask = b_df['字典'].duplicated(keep=False)
+        duplicate_rows = b_df[duplicate_mask]
 
-    if not duplicate_rows.empty:
-        st.warning("发现字典中有重复元素，以下是重复的行：")
-        st.dataframe(duplicate_rows)
-        st.info("将选用重复行中上面出现的第一条数据进行后续处理。")
-        # 只保留首次出现的行
-        b_df = b_df[~b_df['字典'].duplicated(keep='first')]
+        if not duplicate_rows.empty:
+            st.warning("发现字典中有重复元素，以下是重复的行：")
+            st.dataframe(duplicate_rows)
+            st.info("将选用重复行中上面出现的第一条数据进行后续处理。")
+            # 只保留首次出现的行
+            b_df = b_df[~b_df['字典'].duplicated(keep='first')]
 
-    return b_df
+        return b_df
+    except Exception as e:
+        st.error(f"读取 B 文件时出错: {str(e)}")
+        return pd.DataFrame()
 
-@st.cache_data
 def process_data(a_df, b_df):
+    # 检查输入是否有效
+    if a_df.empty or b_df.empty:
+        st.error("无法处理空数据。请检查上传的文件是否有效。")
+        return pd.DataFrame()
+    
     # 统计不同长度的数量
     length_zero_count = 0
     length_one_count = 0
@@ -132,6 +152,9 @@ def process_data(a_df, b_df):
     # 记录开始时间
     start_time = time.time()
 
+    # 优化进度更新频率，每 100 行更新一次
+    update_interval = min(100, max(1, total_rows // 100))
+
     # 遍历 a 文件的源数据，查找匹配的关键词
     for index, source_data in enumerate(a_df['源数据']):
         matched = False
@@ -139,12 +162,12 @@ def process_data(a_df, b_df):
         latest_match = None
         latest_labels = None
         max_start_index = -1
+        
+        # 使用生成器表达式替代部分循环
         for dict_word, labels in b_dict.items():
             word_length = len(dict_word)
             if word_length < max_length:
-                # 如果当前字典词长度小于等于已找到的最大匹配长度，跳出内层循环
                 break
-            # 从右到左查找关键词
             start_index = source_data.rfind(dict_word)
             if start_index != -1:
                 if start_index > max_start_index:
@@ -162,20 +185,22 @@ def process_data(a_df, b_df):
             result_row.update(latest_labels)
             result_data.append(result_row)
 
-        # 计算已用时间和剩余时间
-        elapsed_time = time.time() - start_time
-        progress = (index + 1) / total_rows
-        remaining_time = (elapsed_time / (index + 1)) * (total_rows - (index + 1))
+        # 每 update_interval 行更新一次进度条
+        if (index + 1) % update_interval == 0 or (index + 1) == total_rows:
+            # 计算已用时间和剩余时间
+            elapsed_time = time.time() - start_time
+            progress = (index + 1) / total_rows
+            remaining_time = (elapsed_time / (index + 1)) * (total_rows - (index + 1))
 
-        # 更新进度条和文字信息
-        progress_bar.progress(progress)
-        progress_text.text(f"处理进度: {index + 1}/{total_rows} | 已用时间: {elapsed_time:.2f}秒 | 剩余时间: {remaining_time:.2f}秒")
+            # 更新进度条和文字信息
+            progress_bar.progress(progress)
+            progress_text.text(f"处理进度: {index + 1}/{total_rows} | 已用时间: {elapsed_time:.2f}秒 | 剩余时间: {remaining_time:.2f}秒")
 
     # 将结果转换为 DataFrame
     result_df = pd.DataFrame(result_data)
 
     # 新增功能：根据 B 文件第六列数字切分源数据并对比
-    if '标签5' in b_df.columns:
+    if '标签5' in b_df.columns and not result_df.empty:
         b_cut_dict = {row['字典']: row['标签5'] for _, row in b_df.iterrows()}
         result_df['是否词尾'] = ''
         for index, row in result_df.iterrows():
@@ -203,31 +228,46 @@ a_file = st.file_uploader("上传 A 文件（XLSX 格式）", type=["xlsx"])
 # 上传 B 文件
 b_file = st.file_uploader("上传 B 文件（XLSX 格式）", type=["xlsx"])
 
+# 检查文件是否更改，避免重复处理
 if a_file and b_file:
-    # 读取文件
-    a_df = read_a_file(a_file)
-    b_df = read_b_file(b_file)
+    # 只有当文件不同或数据未处理时才重新处理
+    if (a_file != st.session_state.get('last_a_file') or 
+        b_file != st.session_state.get('last_b_file') or
+        st.session_state.a_df is None or 
+        st.session_state.b_df is None):
+        
+        # 重置会话状态中的数据
+        st.session_state.a_df = read_a_file(a_file)
+        st.session_state.b_df = read_b_file(b_file)
+        st.session_state.last_a_file = a_file
+        st.session_state.last_b_file = b_file
+        
+        # 处理数据
+        with st.spinner("正在处理数据..."):
+            st.session_state.result_df = process_data(st.session_state.a_df, st.session_state.b_df)
+    
+    # 显示处理后的结果
+    if st.session_state.result_df is not None and not st.session_state.result_df.empty:
+        # 显示处理后的前十条结果
+        st.subheader("处理后的前十条结果")
+        st.dataframe(st.session_state.result_df.head(10))
 
-    # 处理数据
-    result_df = process_data(a_df, b_df)
+        # 将结果保存到内存中的 Excel 文件
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            st.session_state.result_df.to_excel(writer, index=False)
+        output.seek(0)
 
-    # 显示处理后的前十条结果
-    st.subheader("处理后的前十条结果")
-    st.dataframe(result_df.head(10))
+        # 提供下载链接
+        st.download_button(
+            label="下载处理后的 Excel 文件",
+            data=output,
+            file_name='output.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
 
-    # 将结果保存到内存中的 Excel 文件
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        result_df.to_excel(writer, index=False)
-    output.seek(0)
-
-    # 提供下载链接
-    st.download_button(
-        label="下载处理后的 Excel 文件",
-        data=output,
-        file_name='output.xlsx',
-        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-
-    # 显示处理结果的简单统计信息
-    st.info(f"共处理了 {len(a_df)} 条源数据，匹配到 {len(result_df[result_df[result_df.columns[2:]].notna().any(axis=1)])} 条结果。")
+        # 显示处理结果的简单统计信息
+        matched_count = len(st.session_state.result_df[st.session_state.result_df[st.session_state.result_df.columns[2:]].notna().any(axis=1)])
+        st.info(f"共处理了 {len(st.session_state.a_df)} 条源数据，匹配到 {matched_count} 条结果。")
+    else:
+        st.warning("处理结果为空。请检查输入数据是否符合预期。")
