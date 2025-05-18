@@ -3,7 +3,10 @@ import pandas as pd
 import io
 import time
 from functools import lru_cache
-
+# 获取详细错误信息（仅限调试）
+import os
+if 'STAGING' in os.environ:
+    st.write("当前环境变量:", os.environ)
 # 设置页面标题和布局
 st.set_page_config(page_title="轻量化切词小工具", layout="centered")
 
