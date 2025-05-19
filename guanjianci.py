@@ -194,22 +194,10 @@ def process_data(a_df, b_df):
     return result_df
 
 # 上传 A 文件
-a_file = st.file_uploader("上传 A 文件（XLSX 格式）", type=["xlsx"])
-if a_file is not None:
-    # 检查文件大小（示例：限制为 10MB）
-    if a_file.size > 10 * 1024 * 1024:
-        st.error("文件超过 10MB，请上传较小的文件。")
-    else:
-        try:
-            # 尝试读取文件
-            df = pd.read_excel(a_file)
-            st.success("文件上传成功！")
-            st.dataframe(df.head())
-        except Exception as e:
-            st.error(f"文件解析错误: {str(e)}")
+a_file = st.file_uploader("上传 A 文件（XLSX 格式）", type=["csv"])
 
 # 上传 B 文件
-b_file = st.file_uploader("上传 B 文件（XLSX 格式）", type=["xlsx"])
+b_file = st.file_uploader("上传 B 文件（XLSX 格式）", type=["csv"])
 
 if a_file and b_file:
     # 读取文件
