@@ -26,58 +26,46 @@ st.markdown("""
 4. **备注**：文档切词之前会根据单个的字典长度进行内部排列，确保洗数逻辑是从大到小，从右往左的形式。
 """, unsafe_allow_html=True)
 
-# 定义缓存函数 - 使用 persist 参数避免缓存问题
-@st.cache_data(persist=True)
+# 定义缓存函数
+@st.cache_data
 def read_a_file(a_file):
-    try:
-        a_df = pd.read_excel(a_file, sheet_name=0, usecols=[0], header=None)
-        a_df.columns = ['源数据']
-        # 将数字转换为字符串
-        a_df['源数据'] = a_df['源数据'].astype(str)
-        return a_df
-    except Exception as e:
-        st.error(f"读取 A 文件时出错: {e}")
-        return pd.DataFrame()
+    a_df = pd.read_excel(a_file, sheet_name=0, usecols=[0], header=None)
+    a_df.columns = ['源数据']
+    # 将数字转换为字符串
+    a_df['源数据'] = a_df['源数据'].astype(str)
+    return a_df
 
-@st.cache_data(persist=True)
+@st.cache_data
 def read_b_file(b_file):
-    try:
-        # 读取 B 文件，不指定列，让 pandas 自动识别
-        b_df = pd.read_excel(b_file, sheet_name=0, header=None)
-        # 获取列数
-        num_columns = b_df.shape[1]
-        # 重命名第一列为字典
-        b_df.rename(columns={0: '字典'}, inplace=True)
-        # 重命名后面的列为标签1, 标签2, ...
-        for i in range(1, num_columns):
-            b_df.rename(columns={i: f'标签{i}'}, inplace=True)
-        # 将数字转换为字符串
-        b_df['字典'] = b_df['字典'].astype(str)
-        # 按字典长度排序，优先匹配较长的字典
-        b_df = b_df.sort_values(by='字典', key=lambda x: x.str.len(), ascending=False)
+    # 读取 B 文件，不指定列，让 pandas 自动识别
+    b_df = pd.read_excel(b_file, sheet_name=0, header=None)
+    # 获取列数
+    num_columns = b_df.shape[1]
+    # 重命名第一列为字典
+    b_df.rename(columns={0: '字典'}, inplace=True)
+    # 重命名后面的列为标签1, 标签2, ...
+    for i in range(1, num_columns):
+        b_df.rename(columns={i: f'标签{i}'}, inplace=True)
+    # 将数字转换为字符串
+    b_df['字典'] = b_df['字典'].astype(str)
+    # 按字典长度排序，优先匹配较长的字典
+    b_df = b_df.sort_values(by='字典', key=lambda x: x.str.len(), ascending=False)
 
-        # 找出所有重复行
-        duplicate_mask = b_df['字典'].duplicated(keep=False)
-        duplicate_rows = b_df[duplicate_mask]
+    # 找出所有重复行
+    duplicate_mask = b_df['字典'].duplicated(keep=False)
+    duplicate_rows = b_df[duplicate_mask]
 
-        if not duplicate_rows.empty:
-            st.warning("发现字典中有重复元素，以下是重复的行：")
-            st.dataframe(duplicate_rows)
-            st.info("将选用重复行中上面出现的第一条数据进行后续处理。")
-            # 只保留首次出现的行
-            b_df = b_df[~b_df['字典'].duplicated(keep='first')]
+    if not duplicate_rows.empty:
+        st.warning("发现字典中有重复元素，以下是重复的行：")
+        st.dataframe(duplicate_rows)
+        st.info("将选用重复行中上面出现的第一条数据进行后续处理。")
+        # 只保留首次出现的行
+        b_df = b_df[~b_df['字典'].duplicated(keep='first')]
 
-        return b_df
-    except Exception as e:
-        st.error(f"读取 B 文件时出错: {e}")
-        return pd.DataFrame()
+    return b_df
 
-@st.cache_data(persist=True)
+@st.cache_data
 def process_data(a_df, b_df):
-    if a_df.empty or b_df.empty:
-        st.error("源数据或字典数据为空，请检查上传的文件。")
-        return pd.DataFrame()
-    
     # 统计不同长度的数量
     length_zero_count = 0
     length_one_count = 0
@@ -187,18 +175,17 @@ def process_data(a_df, b_df):
     result_df = pd.DataFrame(result_data)
 
     # 根据 B 文件第一列的长度来切分源数据并对比
-    if not result_df.empty:
-        result_df['是否词尾'] = ''
-        for index, row in result_df.iterrows():
-            source_data = row['源数据']
-            dict_word = row['字典']
-            dict_length = len(dict_word)
-            if len(source_data) >= dict_length:
-                right_part = source_data[-dict_length:]
-                if right_part == dict_word:
-                    result_df.at[index, '是否词尾'] = 'Y'
-                else:
-                    result_df.at[index, '是否词尾'] = 'N'
+    result_df['是否词尾'] = ''
+    for index, row in result_df.iterrows():
+        source_data = row['源数据']
+        dict_word = row['字典']
+        dict_length = len(dict_word)
+        if len(source_data) >= dict_length:
+            right_part = source_data[-dict_length:]
+            if right_part == dict_word:
+                result_df.at[index, '是否词尾'] = 'Y'
+            else:
+                result_df.at[index, '是否词尾'] = 'N'
 
     # 清空进度条和进度文字
     progress_bar.empty()
@@ -212,43 +199,32 @@ a_file = st.file_uploader("上传 A 文件（XLSX 格式）", type=["xlsx"])
 # 上传 B 文件
 b_file = st.file_uploader("上传 B 文件（XLSX 格式）", type=["xlsx"])
 
-# 添加清除缓存按钮
-if st.button("清除缓存并重新运行"):
-    st.cache_data.clear()
-    st.experimental_rerun()
-
 if a_file and b_file:
-    # 显示文件上传成功的消息
-    with st.spinner("正在读取文件..."):
-        # 读取文件
-        a_df = read_a_file(a_file)
-        b_df = read_b_file(b_file)
+    # 读取文件
+    a_df = read_a_file(a_file)
+    b_df = read_b_file(b_file)
 
     # 处理数据
-    if not a_df.empty and not b_df.empty:
-        with st.spinner("正在处理数据..."):
-            result_df = process_data(a_df, b_df)
+    result_df = process_data(a_df, b_df)
 
-        # 显示处理后的前十条结果
-        if not result_df.empty:
-            st.subheader("处理后的前十条结果")
-            st.dataframe(result_df.head(10))
+    # 显示处理后的前十条结果
+    st.subheader("处理后的前十条结果")
+    st.dataframe(result_df.head(10))
 
-            # 将结果保存到内存中的 Excel 文件
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                result_df.to_excel(writer, index=False)
-            output.seek(0)
+    # 将结果保存到内存中的 Excel 文件
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        result_df.to_excel(writer, index=False)
+    output.seek(0)
 
-            # 提供下载链接
-            st.download_button(
-                label="下载处理后的 Excel 文件",
-                data=output,
-                file_name='output.xlsx',
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
+    # 提供下载链接
+    st.download_button(
+        label="下载处理后的 Excel 文件",
+        data=output,
+        file_name='output.xlsx',
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
 
-            # 显示处理结果的简单统计信息
-            st.info(f"共处理了 {len(a_df)} 条源数据，匹配到 {len(result_df[result_df[result_df.columns[2:]].notna().any(axis=1)])} 条结果。")
-        else:
-            st.warning("未能找到匹配结果，请检查您的字典文件。")
+    # 显示处理结果的简单统计信息
+    st.info(f"共处理了 {len(a_df)} 条源数据，匹配到 {len(result_df[result_df[result_df.columns[2:]].notna().any(axis=1)])} 条结果。")
+    
