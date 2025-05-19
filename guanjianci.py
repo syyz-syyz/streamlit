@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import os
+import io
 import time
 
 # 设置页面标题和布局
@@ -20,63 +20,52 @@ st.markdown("""
     }
 </style>
 ### 操作指南
-1. **输入 A 文件路径**：请输入一个 XLSX 文件的路径，程序将读取该文件第一个工作表的第一列作为源数据。
-2. **输入 B 文件路径**：请输入另一个 XLSX 文件的路径，程序将读取该文件第一个工作表的第一列作为字典，后面的列作为标签。
+1. **读取 A 文件**：请上传一个 XLSX 文件，程序将读取该文件第一个工作表的第一列作为源数据。
+2. **读取 B 文件**：请上传另一个 XLSX 文件，程序将读取该文件第一个工作表的第一列作为字典，后面的列作为标签。
 3. **功能实现**：通过 B 文件中的字典数据，提取 A 文件源数据中的关键词，并将匹配结果整理成新的 Excel 文件供你下载。
 4. **备注**：文档切词之前会根据单个的字典长度进行内部排列，确保洗数逻辑是从大到小，从右往左的形式。
 """, unsafe_allow_html=True)
 
 # 定义缓存函数
 @st.cache_data
-def read_a_file(a_file_path):
-    try:
-        a_df = pd.read_excel(a_file_path, sheet_name=0, usecols=[0], header=None)
-        a_df.columns = ['源数据']
-        # 将数字转换为字符串
-        a_df['源数据'] = a_df['源数据'].astype(str)
-        return a_df
-    except Exception as e:
-        st.error(f"读取A文件时出错: {str(e)}")
-        return None
+def read_a_file(a_file):
+    a_df = pd.read_excel(a_file, sheet_name=0, usecols=[0], header=None)
+    a_df.columns = ['源数据']
+    # 将数字转换为字符串
+    a_df['源数据'] = a_df['源数据'].astype(str)
+    return a_df
 
 @st.cache_data
-def read_b_file(b_file_path):
-    try:
-        # 读取 B 文件，不指定列，让 pandas 自动识别
-        b_df = pd.read_excel(b_file_path, sheet_name=0, header=None)
-        # 获取列数
-        num_columns = b_df.shape[1]
-        # 重命名第一列为字典
-        b_df.rename(columns={0: '字典'}, inplace=True)
-        # 重命名后面的列为标签1, 标签2, ...
-        for i in range(1, num_columns):
-            b_df.rename(columns={i: f'标签{i}'}, inplace=True)
-        # 将数字转换为字符串
-        b_df['字典'] = b_df['字典'].astype(str)
-        # 按字典长度排序，优先匹配较长的字典
-        b_df = b_df.sort_values(by='字典', key=lambda x: x.str.len(), ascending=False)
+def read_b_file(b_file):
+    # 读取 B 文件，不指定列，让 pandas 自动识别
+    b_df = pd.read_excel(b_file, sheet_name=0, header=None)
+    # 获取列数
+    num_columns = b_df.shape[1]
+    # 重命名第一列为字典
+    b_df.rename(columns={0: '字典'}, inplace=True)
+    # 重命名后面的列为标签1, 标签2, ...
+    for i in range(1, num_columns):
+        b_df.rename(columns={i: f'标签{i}'}, inplace=True)
+    # 将数字转换为字符串
+    b_df['字典'] = b_df['字典'].astype(str)
+    # 按字典长度排序，优先匹配较长的字典
+    b_df = b_df.sort_values(by='字典', key=lambda x: x.str.len(), ascending=False)
 
-        # 找出所有重复行
-        duplicate_mask = b_df['字典'].duplicated(keep=False)
-        duplicate_rows = b_df[duplicate_mask]
+    # 找出所有重复行
+    duplicate_mask = b_df['字典'].duplicated(keep=False)
+    duplicate_rows = b_df[duplicate_mask]
 
-        if not duplicate_rows.empty:
-            st.warning("发现字典中有重复元素，以下是重复的行：")
-            st.dataframe(duplicate_rows)
-            st.info("将选用重复行中上面出现的第一条数据进行后续处理。")
-            # 只保留首次出现的行
-            b_df = b_df[~b_df['字典'].duplicated(keep='first')]
+    if not duplicate_rows.empty:
+        st.warning("发现字典中有重复元素，以下是重复的行：")
+        st.dataframe(duplicate_rows)
+        st.info("将选用重复行中上面出现的第一条数据进行后续处理。")
+        # 只保留首次出现的行
+        b_df = b_df[~b_df['字典'].duplicated(keep='first')]
 
-        return b_df
-    except Exception as e:
-        st.error(f"读取B文件时出错: {str(e)}")
-        return None
+    return b_df
 
 @st.cache_data
 def process_data(a_df, b_df):
-    if a_df is None or b_df is None:
-        return pd.DataFrame()
-        
     # 统计不同长度的数量
     length_zero_count = 0
     length_one_count = 0
@@ -204,51 +193,38 @@ def process_data(a_df, b_df):
 
     return result_df
 
-# 输入 A 文件路径
-a_file_path = st.text_input("输入 A 文件路径（XLSX 格式）")
+# 上传 A 文件
+a_file = st.file_uploader("上传 A 文件（XLSX 格式）", type=["xlsx"])
 
-# 输入 B 文件路径
-b_file_path = st.text_input("输入 B 文件路径（XLSX 格式）")
+# 上传 B 文件
+b_file = st.file_uploader("上传 B 文件（XLSX 格式）", type=["xlsx"])
 
-if a_file_path and b_file_path:
-    # 检查文件是否存在
-    if not os.path.exists(a_file_path):
-        st.error(f"文件不存在: {a_file_path}")
-    elif not os.path.exists(b_file_path):
-        st.error(f"文件不存在: {b_file_path}")
-    else:
-        # 检查文件类型
-        if not a_file_path.lower().endswith('.xlsx'):
-            st.error("A文件必须是XLSX格式")
-        elif not b_file_path.lower().endswith('.xlsx'):
-            st.error("B文件必须是XLSX格式")
-        else:
-            # 读取文件
-            a_df = read_a_file(a_file_path)
-            b_df = read_b_file(b_file_path)
+if a_file and b_file:
+    # 读取文件
+    a_df = read_a_file(a_file)
+    b_df = read_b_file(b_file)
 
-            # 处理数据
-            result_df = process_data(a_df, b_df)
+    # 处理数据
+    result_df = process_data(a_df, b_df)
 
-            if not result_df.empty:
-                # 显示处理后的前十条结果
-                st.subheader("处理后的前十条结果")
-                st.dataframe(result_df.head(10))
+    # 显示处理后的前十条结果
+    st.subheader("处理后的前十条结果")
+    st.dataframe(result_df.head(10))
 
-                # 将结果保存到内存中的 Excel 文件
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    result_df.to_excel(writer, index=False)
-                output.seek(0)
+    # 将结果保存到内存中的 Excel 文件
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        result_df.to_excel(writer, index=False)
+    output.seek(0)
 
-                # 提供下载链接
-                st.download_button(
-                    label="下载处理后的 Excel 文件",
-                    data=output,
-                    file_name='output.xlsx',
-                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                )
+    # 提供下载链接
+    st.download_button(
+        label="下载处理后的 Excel 文件",
+        data=output,
+        file_name='output.xlsx',
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
 
-                # 显示处理结果的简单统计信息
-                match_count = len(result_df[result_df[result_df.columns[2:]].notna().any(axis=1)])
-                st.info(f"共处理了 {len(a_df)} 条源数据，匹配到 {match_count} 条结果。")
+    # 显示处理结果的简单统计信息
+    st.info(f"共处理了 {len(a_df)} 条源数据，匹配到 {len(result_df[result_df[result_df.columns[2:]].notna().any(axis=1)])} 条结果。")
+    
