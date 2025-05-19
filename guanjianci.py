@@ -194,10 +194,10 @@ def process_data(a_df, b_df):
     return result_df
 
 # 上传 A 文件
-a_file = st.file_uploader("上传 A 文件（XLSX 格式）", type=["csv"])
+a_file = st.file_uploader("上传 A 文件（XLSX 格式）", type=["xlsx"])
 
 # 上传 B 文件
-b_file = st.file_uploader("上传 B 文件（XLSX 格式）", type=["csv"])
+b_file = st.file_uploader("上传 B 文件（XLSX 格式）", type=["xlsx"])
 
 if a_file and b_file:
     # 读取文件
